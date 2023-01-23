@@ -10,8 +10,8 @@ public class Account implements Serializable{
 	private static final long serialVersionUID = 1L;
 	@NotEmpty @Email
 	public String username;
-	 @Size(min = 6) @NotEmpty
+	 @Size(min = 6, message = "password must have length not less than 6") @NotEmpty
 	public String password;
-	@NotEmpty @Pattern(regexp = "USER|ADMIN")
+	@NotEmpty 
 	public String role;
 }
