@@ -8,33 +8,41 @@ import org.springframework.security.core.userdetails.User;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.provisioning.UserDetailsManager;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 
 import java.io.*;
+import java.time.LocalDateTime;
 
+import telran.spring.accounting.entities.AccountEntity;
 import telran.spring.accounting.model.Account;
+import telran.spring.accounting.repo.AccountRepository;
 @Service
+@Transactional
 public class AccountingServiceImpl implements AccountingService {
 	private static Logger LOG = LoggerFactory.getLogger(AccountingService.class);
 	@Value("${app.admin.username:admin}")
 	private String admin;
+	@Value("${app.password.period:100}")
+	private int passwordPeriod; //period password existence in hours
 private PasswordEncoder passwordEncoder;
 private UserDetailsManager userDetailsManager;
-private HashMap<String, Account> accounts;
-@Value("${app.file.name:accounts.data}")
-private String fileName;
+private AccountRepository accounts;
+
 
 	@Override
 	public boolean addAccount(Account account) {
 		boolean res = false;
-		if(!account.username.equals(admin) && !accounts.containsKey(account.username)) {
+		if(!account.username.equals(admin) && !accounts.existsById(account.username)) {
 			res = true;
 			account.password = passwordEncoder.encode(account.password);
-			accounts.put(account.username, account);
+			AccountEntity accountDocument = AccountEntity.of(account);
+			accountDocument.setExpiration(LocalDateTime.now().plusHours(passwordPeriod));
+			accounts.save(accountDocument);
 			userDetailsManager.createUser(User.withUsername(account.username)
-					.password(account.password).roles(account.role).build());
+					.password(account.password).roles(account.roles).build());
 		}
 		return res;
 	}
@@ -42,9 +50,9 @@ private String fileName;
 	@Override
 	public boolean deleteAccount(String username) {
 		boolean res = false;
-		if(accounts.containsKey(username)) {
+		if(accounts.existsById(username)) {
 			res = true;
-			accounts.remove(username);
+			accounts.deleteById(username);
 			userDetailsManager.deleteUser(username);
 		}
 		return res;
@@ -53,48 +61,47 @@ private String fileName;
 	@Override
 	public boolean updateAccount(Account account) {
 		boolean res = false;
-		if(accounts.containsKey(account.username)) {
-			res = true;
-			account.password = passwordEncoder.encode(account.password);
-			accounts.put(account.username, account);
-			userDetailsManager.updateUser(User.withUsername(account.username)
-					.password(account.password).roles(account.role).build());
+		AccountEntity accountDocument = accounts.findById(account.username).orElse(null);
+		if(accountDocument != null) {
+			if (!passwordEncoder.matches(account.password, accountDocument.getPassword())) {
+				res = true;
+				account.password = passwordEncoder.encode(account.password);
+				accountDocument.setPassword(account.password);
+				accountDocument.setExpiration(LocalDateTime.now().plusHours(passwordPeriod));
+				accountDocument.setRevoked(false);
+				accountDocument.setRoles(account.roles);
+				accounts.save(accountDocument);
+				userDetailsManager.updateUser(User.withUsername(account.username)
+						.password(account.password).roles(account.roles).build());
+			}
+			
+			
+			
 		}
 		return res;
 	}
 
 	@Override
+	@Transactional(readOnly=true)
 	public boolean isExists(String username) {
-		return accounts.containsKey(username);
+		return accounts.existsById(username);
 	}
 
-	public AccountingServiceImpl(PasswordEncoder passwordEncoder, UserDetailsManager userDetailsManager) {
+	public AccountingServiceImpl(PasswordEncoder passwordEncoder,
+			UserDetailsManager userDetailsManager, AccountRepository accounts) {
 		this.passwordEncoder = passwordEncoder;
 		this.userDetailsManager = userDetailsManager;
+		this.accounts = accounts;
 	}
-	@PreDestroy
-	void saveAccounts() {
-		try(ObjectOutputStream output = new ObjectOutputStream(new FileOutputStream(fileName))){
-			output.writeObject(accounts);
-			LOG.debug("accounts saved to file {}", fileName);
-		} catch(Exception e) {
-			LOG.error("saving to file caused exception {}", e.getMessage());
-		}
-	}
+	
 	@PostConstruct
 	void restoreAccounts() {
-		try(ObjectInputStream input = new ObjectInputStream(new FileInputStream(fileName))){
-			accounts = (HashMap<String, Account>) input.readObject();
-			for(Account acc: accounts.values()) {
-				userDetailsManager.createUser(User.withUsername(acc.username)
-						.password(acc.password).roles(acc.role).build());
+		//TODO finding only non-revoked and non-expired accounts
+			for(AccountEntity acc: accounts.findAll()) {
+				userDetailsManager.createUser(User.withUsername(acc.getEmail())
+						.password(acc.getPassword()).roles(acc.getRoles()).build());
 			}
-			LOG.debug("accounts {} has been restored", accounts.keySet());
-		}catch(FileNotFoundException e) {
-			LOG.warn("file {} doesn't exists", fileName);
-			accounts = new HashMap<>();
-		}catch (Exception e) {
-			LOG.error("error at restoring accounts {}", e.getMessage());
-		}
+			LOG.debug("accounts {} has been restored", accounts.count());
+		
 	}
 }
