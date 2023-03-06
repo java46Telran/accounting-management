@@ -1,4 +1,4 @@
-package telran.spring.accounting.secrity;
+	package telran.spring.accounting.secrity;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.*;
