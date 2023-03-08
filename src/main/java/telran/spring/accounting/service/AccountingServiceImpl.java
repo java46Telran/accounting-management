@@ -96,6 +96,7 @@ public class AccountingServiceImpl implements AccountingService {
 	}
 
 	@PostConstruct
+	@Transactional(readOnly = true)
 	void detailsManagerPopulation() {
 		List<AccountEntity> accountEntities =
 				accounts.findByExpirationGreaterThanAndRevokedIsFalse(LocalDateTime.now(ZoneId.of("UTC")));
@@ -107,5 +108,52 @@ public class AccountingServiceImpl implements AccountingService {
 	);
 			LOG.debug("accounts {} has been restored", accountEntities.size());
 		
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public List<String> getAccountsRole(String role) {
+		List<AccountEntity> accountsDB = accounts.findByRole(role);
+		LOG.debug("passwords: {}", accountsDB.stream().map(AccountEntity::getPassword).toList());
+		return accountsDB.stream().map(AccountEntity::getEmail).toList();
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public List<String> getActiveAccounts() {
+		List<AccountEntity> accountsDB =
+				accounts.findByExpirationGreaterThanAndRevokedIsFalse(LocalDateTime.now(ZoneId.of("UTC")));
+		return accountsDB.stream().map(AccountEntity::getEmail).toList();
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public long getMaxRoles() {
+		
+		return accounts.getMaxRoles();
+	}
+
+	@Override
+	public List<String> getAllAccountsWithMaxRoles() {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public int getMaxRolesOccurrenceCount() {
+		// TODO Auto-generated method stub
+		return 0;
+	}
+
+	@Override
+	public List<String> getAllRolesWithMaxOccurrrence() {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public int getActiveMinRolesOccurrenceCount() {
+		// TODO Auto-generated method stub
+		return 0;
 	}
 }
